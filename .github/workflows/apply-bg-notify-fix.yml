@@ -1,0 +1,29 @@
+name: Apply bg notify fix (one-shot)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-bg-notify-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run patch
+        run: python3 .github/scripts/patch_bg_notify_fix.py
+      - name: Commit and clean up
+        run: |
+          set -e
+          git config user.name "asap123-hhh"
+          git config user.email "2058761504@qq.com"
+          git add -A
+          git commit -m "fix: 切后台也能弹通知（壳报前后台 + 网页据此判断）"
+          git rm -q .github/scripts/patch_bg_notify_fix.py
+          git rm -q .github/workflows/apply-bg-notify-fix.yml
+          git commit -m "ci: 清理一次性补丁文件"
+          git push
