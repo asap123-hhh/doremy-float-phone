@@ -92,6 +92,12 @@ class MainActivity : AppCompatActivity() {
          * 只需要管一个开关。渠道一旦创建过，后建的只更新名称/描述，不会重置用户选择。
          */
         const val CH_MESSAGES = "shell_messages"
+        /**
+         * 降级渠道：原「角色消息」渠道被系统/用户设成 IMPORTANCE_NONE 时改发到这里。
+         * Android 8+ 往被静音的渠道发通知是**静默丢弃**（不报错、通知栏什么都没有），
+         * 这类情况只看代码查不出来，所以留一条能发出去的后路。
+         */
+        const val CH_MESSAGES_V2 = "shell_messages_v2"
     }
 
     private lateinit var rootContainer: FrameLayout
@@ -107,6 +113,70 @@ class MainActivity : AppCompatActivity() {
 
     /** 网页消息通知的自增 id：同一条消息覆盖同一 id 会让新通知顶掉旧的，故逐条递增。 */
     private var webNotifId = 500
+
+    /** 在 UI 线程弹一个提示，把「通知发不出去」的原因直接摊给用户看。 */
+    private fun toastOnUi(message: String) {
+        runOnUiThread {
+            runCatching {
+                android.widget.Toast.makeText(this@MainActivity, message, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * 选一个「真能显示出来」的角色消息渠道。
+     *
+     * 渠道的重要性一旦被系统或用户设成 IMPORTANCE_NONE，往里面发通知会被静默丢弃：
+     * 代码不报错、通知栏什么都不出现（部分 ROM 默认就把新渠道归成静默）。
+     * 这里做一次降级——发现原渠道被静音，就建一个 v2 渠道先保证通知能出来。
+     */
+    private fun ensureUsableMessageChannel(manager: NotificationManager): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return CH_MESSAGES
+        val current = manager.getNotificationChannel(CH_MESSAGES)
+        if (current == null || current.importance != NotificationManager.IMPORTANCE_NONE) {
+            return CH_MESSAGES
+        }
+        runCatching {
+            if (manager.getNotificationChannel(CH_MESSAGES_V2) == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(CH_MESSAGES_V2, "角色消息（新）", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "角色发来的消息"
+                    },
+                )
+            }
+        }
+        return CH_MESSAGES_V2
+    }
+
+    /**
+     * 首次安装后发一条纯原生自检通知。
+     * 不经过网页、不依赖任何配置，专门用来确认「系统这一层」是否放行。
+     */
+    private fun scheduleSelfTestNotification() {
+        val prefs = getSharedPreferences("shell_self_test", MODE_PRIVATE)
+        if (prefs.getBoolean("notified_v2", false)) return
+        android.os.Handler(mainLooper).postDelayed({
+            runCatching {
+                val manager = getSystemService(NotificationManager::class.java)
+                if (!manager.areNotificationsEnabled()) {
+                    toastOnUi("系统通知权限没开：消息只能响铃")
+                    return@postDelayed
+                }
+                val channelId = ensureUsableMessageChannel(manager)
+                val text = "看到这条，说明系统通知是通的；看不到就是被系统或渠道拦了。"
+                val notification = NotificationCompat.Builder(this, channelId)
+                    .setSmallIcon(R.drawable.ic_stat)
+                    .setContentTitle("float 通知自检")
+                    .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .build()
+                manager.notify(999, notification)
+                prefs.edit().putBoolean("notified_v2", true).apply()
+            }
+        }, 4000)
+    }
 
     /** 感知桥：把电量/网络/应用名/步数交给网页（边界说明见 PerceptionBridge）。 */
     private val perception by lazy { PerceptionBridge(this) }
@@ -303,6 +373,9 @@ class MainActivity : AppCompatActivity() {
         observeWindowInsets()
         // 首帧主动请求一次 insets，确保启动即拿到状态栏高度（部分机型不会自动派发首次回调）。
         ViewCompat.requestApplyInsets(rootContainer)
+        // 每装一次发一条原生自检通知（只在首次，之后不再打扰）：能看见说明通知通道通，
+        // 看不见就是被系统或渠道拦了——用来区分「代码问题」和「系统拦截」。
+        scheduleSelfTestNotification()
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -899,11 +972,18 @@ class MainActivity : AppCompatActivity() {
          * @return 是否已发出（JS 端据此决定要不要退回浏览器通知路径）。
          */
         @JavascriptInterface
-        fun notify(title: String, body: String, avatarUrl: String, sessionId: String?): Boolean = runCatching {
+        fun notify(title: String, body: String, avatarUrl: String, sessionId: String?): Boolean {
+            // 头像只是锦上添花：解码/下载失败绝不能把整条通知一起吞掉（旧实现是一个
+            // 大 runCatching 包住全部，头像抛异常时通知直接消失，且没有任何痕迹）。
+            val icon = runCatching { loadAvatarBitmap(avatarUrl) }.getOrNull()
+            return runCatching {
             ensureMessageChannel()
             val manager = getSystemService(NotificationManager::class.java)
-            val icon = loadAvatarBitmap(avatarUrl)
-            val builder = NotificationCompat.Builder(this@MainActivity, CH_MESSAGES)
+            if (!manager.areNotificationsEnabled()) {
+                toastOnUi("系统通知权限没开：消息只能响铃")
+                return false
+            }
+            val builder = NotificationCompat.Builder(this@MainActivity, ensureUsableMessageChannel(manager))
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(title.ifBlank { "小手机" })
                 .setContentText(body)
@@ -948,7 +1028,9 @@ class MainActivity : AppCompatActivity() {
             manager.notify(webNotifId++, builder.build())
             if (webNotifId > 900) webNotifId = 500
             true
-        }.getOrDefault(false)
+            }.onFailure { toastOnUi("通知发送失败：${it.message ?: it.javaClass.simpleName}") }
+                .getOrDefault(false)
+        }
 
         /**
          * 按直链交给系统下载管理器下载（真·后台）。
