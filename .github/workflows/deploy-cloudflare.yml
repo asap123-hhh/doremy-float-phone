@@ -1,16 +1,8 @@
 name: Deploy to Cloudflare Pages
 
+# 只保留手动触发：推送代码不再自动部署（省额度，也不再发失败邮件）。
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/deploy-cloudflare.yml'
-      - 'app/**'
-      - 'components/**'
-      - 'lib/**'
-      - 'public/**'
-      - 'styles/**'
 
 jobs:
   deploy:

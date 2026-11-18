@@ -1,5 +1,7 @@
 name: Deploy to Netlify
 on:
+  # 只保留手动触发：推送代码不再自动部署，避免每次 push 都消耗 Netlify 构建额度。
+  # 要在 GitHub 里部署：Actions → Deploy to Netlify → Run workflow。
   workflow_dispatch:
     inputs:
       sync_upstream:
@@ -7,8 +9,6 @@ on:
         required: false
         default: false
         type: boolean
-  push:
-    branches: [main]
 jobs:
   deploy:
     runs-on: ubuntu-latest
