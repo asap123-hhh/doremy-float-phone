@@ -2676,8 +2676,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       const detail = (e as CustomEvent<ChatMessageNoticeDetail>).detail;
       if (!detail?.sessionId || !detail.body?.trim()) return;
 
-      const isCurrentMainChat = activeApp === "chat" && activeChatSession?.id === detail.sessionId;
-      const isCurrentMiniChat = showMiniChat && miniSessionRef.current?.id === detail.sessionId;
+      // 「正在看这个会话就别打扰」必须同时满足「页面确实在前台可见」。
+      // 壳切到后台时 WebView 的 JS 仍在跑（提示音照响），但用户根本看不到页面；
+      // 旧判断只比 state，于是后台来的新消息被当成「你正在看」直接吞掉——
+      // 前台有横幅和通知，切后台就只剩声音、通知栏一片空白。
+      // data-shell-bg 由壳在 onStop/onStart 打上/撤销，比 visibilityState 可靠。
+      const pageForeground =
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible" &&
+        !document.documentElement.hasAttribute("data-shell-bg");
+      const isCurrentMainChat = pageForeground && activeApp === "chat" && activeChatSession?.id === detail.sessionId;
+      const isCurrentMiniChat = pageForeground && showMiniChat && miniSessionRef.current?.id === detail.sessionId;
       // 测试弹窗（提示音设置里触发）不受“正在实时聊天则不弹横幅”限制
       if (!detail.isTest && (isCurrentMainChat || isCurrentMiniChat)) return;
 

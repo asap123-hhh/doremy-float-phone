@@ -650,12 +650,29 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
         CallOverlayService.onHostBackground()
         CheckInService.onHostBackground()
+        // 告诉网页「已经切到后台」：网页据此判断用户是否真的在看某个会话。
+        // 只靠 document.visibilityState 不够——部分 ROM 的 WebView 进后台后仍报
+        // visible，后台来的新消息于是被当成「你正在看这个会话」直接吞掉：前台有横幅，
+        // 切后台就只剩提示音、通知栏空空。Activity 生命周期不受 JS 影响，最可靠。
+        runCatching {
+            webView.evaluateJavascript(
+                "try{document.documentElement.setAttribute('data-shell-bg','1')}catch(e){}",
+                null,
+            )
+        }
     }
 
     override fun onStart() {
         super.onStart()
         CallOverlayService.onHostForeground()
         CheckInService.onHostForeground()
+        // 回到前台：撤掉标记，重新恢复「正在看这个会话就不打扰」的判断。
+        runCatching {
+            webView.evaluateJavascript(
+                "try{document.documentElement.removeAttribute('data-shell-bg')}catch(e){}",
+                null,
+            )
+        }
     }
 
     override fun onDestroy() {
