@@ -10,6 +10,7 @@ import {
 import { resolveUserIdentity } from "./settings-storage";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
+import { reportShellAlarms } from "./shell-alarm-bridge";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
@@ -2106,6 +2107,12 @@ export function loadAllFollowUpSchedules(): FollowUpSchedule[] {
 function saveAllFollowUpSchedules(schedules: FollowUpSchedule[]): void {
     if (typeof window === "undefined") return;
     kvSet(FOLLOW_UP_SCHEDULES_KEY, JSON.stringify(schedules));
+    // Hand the next trigger time to the Android shell: when the screen is locked
+    // the web timers are frozen, only a system alarm can wake the WebView.
+    reportShellAlarms(
+        "followup",
+        schedules.map(item => ({ id: item.sessionId, at: item.fireAt })),
+    );
 }
 
 export function saveFollowUpSchedule(schedule: FollowUpSchedule): void {

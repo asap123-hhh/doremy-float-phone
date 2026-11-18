@@ -18,6 +18,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioManager
+import org.json.JSONArray
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -757,6 +758,25 @@ class MainActivity : AppCompatActivity() {
         /** 手电筒当前状态（本进程内的记忆，见 DeviceActionBridge）。 */
         @JavascriptInterface
         fun isTorchOn(): Boolean = deviceAction.isTorchOn()
+
+        // Scheduled tasks: the page reports pending trigger times as [{id,at}]
+        // (at = epoch millis). The shell arms one exact alarm for the earliest.
+        // Returns true when the exact-alarm permission is available.
+        @JavascriptInterface
+        fun setTaskAlarms(json: String): Boolean = runCatching {
+            val items = JSONArray(json)
+            var earliest = Long.MAX_VALUE
+            for (i in 0 until items.length()) {
+                val at = items.optJSONObject(i)?.optLong("at", 0L) ?: 0L
+                if (at > 0L && at < earliest) earliest = at
+            }
+            if (earliest == Long.MAX_VALUE) {
+                TaskAlarms.cancel(this@MainActivity)
+                true
+            } else {
+                TaskAlarms.schedule(this@MainActivity, earliest)
+            }
+        }.getOrDefault(false)
 
         /** 音量：stream=media/ring/alarm/notification，action=up/down/set/mute，level=0-100。 */
         @JavascriptInterface

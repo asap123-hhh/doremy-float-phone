@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Exact alarms for scheduled tasks: wake the WebView on time while the
+         screen is locked. Android 12+ needs the user to grant Alarms & reminders. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 通话浮窗：浮在其他 App 上层（Android 6+ 需用户在系统设置里手动授予） -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -168,6 +172,11 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Fires when a scheduled task is due; wakes the page without lighting the screen. -->
+        <receiver
+            android:name=".TaskAlarmReceiver"
+            android:exported="false" />
 
         <!-- 通话浮窗服务：TYPE_APPLICATION_OVERLAY 浮在其他 App 上层。
              mediaPlayback 类型同时把进程钉在前台，网页语音才不会被系统掐断。 -->

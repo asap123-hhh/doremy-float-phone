@@ -128,6 +128,11 @@ export function startFollowUpService() {
     extendScheduledOutboxGrace();
     stopInterval = bgSetInterval(pollSchedules, POLL_INTERVAL_MS);
     if (typeof window !== "undefined") {
+        // The shell's system alarm calls this on wake-up: poll immediately
+        // instead of waiting for the next interval (timers are frozen when locked).
+        (window as unknown as { __floatDueTick?: () => void }).__floatDueTick = () => pollSchedules();
+    }
+    if (typeof window !== "undefined") {
         periodCareUpdateHandler = () => {
             lastPeriodCarePollAt = 0;
             pollMenstrualPeriodCare(Date.now());
