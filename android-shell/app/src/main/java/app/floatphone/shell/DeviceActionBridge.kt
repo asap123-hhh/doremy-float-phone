@@ -819,10 +819,10 @@ class DeviceActionBridge(private val context: Context) {
             // Exact alarms for scheduled tasks ("Alarms & reminders" in Settings).
             "exact_alarm" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                    .setData(Uri.parse("package:$packageName"))
+                    .setData(Uri.parse("package:${context.packageName}"))
             } else {
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    .setData(Uri.parse("package:$packageName"))
+                    .setData(Uri.parse("package:${context.packageName}"))
             }
             "app_details" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                 .setData(Uri.parse("package:${context.packageName}"))

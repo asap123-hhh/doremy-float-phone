@@ -126,20 +126,39 @@ class MainActivity : AppCompatActivity() {
      * So we open the system grant page once; after that the user can reach it
      * from Settings like any other app.
      */
-    private fun promptExactAlarmOnce() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        val manager = getSystemService(AlarmManager::class.java) ?: return
-        if (manager.canScheduleExactAlarms()) return
-        val prefs = getSharedPreferences("float_shell", MODE_PRIVATE)
-        if (prefs.getBoolean("exact_alarm_prompted", false)) return
-        prefs.edit().putBoolean("exact_alarm_prompted", true).apply()
-        toastOnUi("Please allow Alarms & reminders, otherwise scheduled tasks are delayed")
+    private fun reportAlarmStatus() {
+        val allowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == true
+        } else {
+            true
+        }
+        val versionName = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull().orEmpty()
+
+        // Always surface the real state. On some ROMs the permission is granted by
+        // default (so "float" never shows up in the Alarms & reminders list) and
+        // on others the list only shows apps that already asked — a toast is the
+        // only way the user can tell which case they are in.
+        toastOnUi("float $versionName - exact alarm: " + if (allowed) "ALLOWED" else "NOT ALLOWED")
+        if (allowed) return
+
         runCatching {
             startActivity(
                 Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                     .setData(Uri.parse("package:$packageName"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
+        }.onFailure {
+            // A few ROMs ship no such page: fall back to the app details screen.
+            toastOnUi("No Alarms & reminders page on this ROM, opening app details")
+            runCatching {
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        .setData(Uri.parse("package:$packageName"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
         }
     }
 
@@ -405,7 +424,7 @@ class MainActivity : AppCompatActivity() {
         // 每装一次发一条原生自检通知（只在首次，之后不再打扰）：能看见说明通知通道通，
         // 看不见就是被系统或渠道拦了——用来区分「代码问题」和「系统拦截」。
         scheduleSelfTestNotification()
-        promptExactAlarmOnce()
+        reportAlarmStatus()
 
         webView.settings.apply {
             javaScriptEnabled = true

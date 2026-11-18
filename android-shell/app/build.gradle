@@ -34,8 +34,9 @@ android {
         // 1.0.19：切后台也能弹——壳把前后台状态告诉网页，后台消息不再被当成「正在看」吞掉。
         // 1.0.20: scheduled tasks are driven by a system exact alarm.
         // 1.0.21: ask for the Alarms & reminders permission on first launch.
-        versionCode 20
-        versionName "1.0.21"
+        // 1.0.22: report the exact-alarm status on every launch.
+        versionCode 21
+        versionName "1.0.22"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
