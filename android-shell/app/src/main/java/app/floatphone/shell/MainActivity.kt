@@ -13,6 +13,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
+import android.app.AlarmManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -114,6 +115,33 @@ class MainActivity : AppCompatActivity() {
 
     /** 网页消息通知的自增 id：同一条消息覆盖同一 id 会让新通知顶掉旧的，故逐条递增。 */
     private var webNotifId = 500
+
+    /**
+     * Ask for the "Alarms & reminders" permission (Android 12+) once after install.
+     *
+     * This permission is what lets the shell wake the page at an exact minute for a
+     * scheduled task. On several ROMs (vivo/OPPO etc.) the special-access list only
+     * lists apps that have already requested it — if the shell never asks, "float"
+     * does not appear there at all and the user concludes it is unsupported.
+     * So we open the system grant page once; after that the user can reach it
+     * from Settings like any other app.
+     */
+    private fun promptExactAlarmOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val manager = getSystemService(AlarmManager::class.java) ?: return
+        if (manager.canScheduleExactAlarms()) return
+        val prefs = getSharedPreferences("float_shell", MODE_PRIVATE)
+        if (prefs.getBoolean("exact_alarm_prompted", false)) return
+        prefs.edit().putBoolean("exact_alarm_prompted", true).apply()
+        toastOnUi("Please allow Alarms & reminders, otherwise scheduled tasks are delayed")
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    .setData(Uri.parse("package:$packageName"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
 
     /** 在 UI 线程弹一个提示，把「通知发不出去」的原因直接摊给用户看。 */
     private fun toastOnUi(message: String) {
@@ -377,6 +405,7 @@ class MainActivity : AppCompatActivity() {
         // 每装一次发一条原生自检通知（只在首次，之后不再打扰）：能看见说明通知通道通，
         // 看不见就是被系统或渠道拦了——用来区分「代码问题」和「系统拦截」。
         scheduleSelfTestNotification()
+        promptExactAlarmOnce()
 
         webView.settings.apply {
             javaScriptEnabled = true

@@ -33,8 +33,9 @@ android {
         // 1.0.18：通知桥加固——头像失败不再吞掉通知；渠道被静音时自动降级；首次安装发自检通知。
         // 1.0.19：切后台也能弹——壳把前后台状态告诉网页，后台消息不再被当成「正在看」吞掉。
         // 1.0.20: scheduled tasks are driven by a system exact alarm.
-        versionCode 19
-        versionName "1.0.20"
+        // 1.0.21: ask for the Alarms & reminders permission on first launch.
+        versionCode 20
+        versionName "1.0.21"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
