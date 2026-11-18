@@ -1,0 +1,29 @@
+name: Apply task alarm patch (one-shot)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-task-alarm-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run patch
+        run: python3 .github/scripts/patch_alarms_ascii.py
+      - name: Commit and clean up
+        run: |
+          set -e
+          git config user.name "asap123-hhh"
+          git config user.email "2058761504@qq.com"
+          git add -A
+          git commit -m "feat: 定时任务改由系统精确闹钟唤醒（1.0.20）"
+          git rm -q .github/scripts/patch_alarms_ascii.py
+          git rm -q .github/workflows/apply-task-alarm-patch.yml
+          git commit -m "ci: 清理一次性补丁文件"
+          git push
