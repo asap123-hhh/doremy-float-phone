@@ -97,8 +97,15 @@ class PushService : Service() {
         while (!stopped) {
             val config = fetchConfig()
             if (config == null) {
-                updateKeepAlive("未登录或站点不可达，稍后重试")
-                sleepSec(60); continue
+                // 站点没有配置云服务（单机模式），或暂时不可达：不再常驻轮询。
+                // 旧逻辑每 60 秒重试一次，会带来两个副作用：
+                //   1. 每分钟打一次 /api/auth/me，一个月约 4 万次站点函数调用，纯白耗额度；
+                //   2. 通知栏常挂「未登录或站点不可达」，没配云服务时它永远不会消失，
+                //      看着像故障。
+                // 改为静默退出：撤掉常驻通知、结束服务；下次打开 App 会再尝试一次。
+                stopForegroundCompat()
+                stopSelf()
+                return
             }
             updateKeepAlive("已连接，等待角色消息")
             val closedNormally = runSocket(config)
@@ -314,6 +321,16 @@ class PushService : Service() {
             .setContentIntent(contentIntent())
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
+
+    /** 撤掉常驻通知并退出前台状态（兼容新旧系统）。 */
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= 24) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+    }
 
     private fun updateKeepAlive(text: String) {
         getSystemService(NotificationManager::class.java)
