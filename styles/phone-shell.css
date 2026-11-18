@@ -1458,3 +1458,98 @@
 .folder-dots .dot.active {
   background: color-mix(in srgb, var(--c-home-label, #ffffff) 85%, transparent);
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   FloatShell（安卓壳 / APK）内：页面就是真机本身，不再画虚拟手机
+   ────────────────────────────────────────────────────────────────────
+   App 里 WebView 是全屏加载本站的，不该再出现一台 390×844 的「手机套手机」。
+
+   整屏规则原本只写在 @media (max-width:500px) and (hover:none) and (pointer:coarse)
+   里，但 WebView 对 hover / pointer 的求值随版本和机型变化，这条查询并不稳定命中；
+   一旦不命中就走桌面分支，390px 的手机壳连同金属边框、侧键一起被按真机像素放大，
+   表现为机身溢出屏幕右侧。
+
+   所以改用确定性的钩子：壳在每次页面加载后给 <html> 打上 data-float-shell="1"，
+   CSS 只认这个属性，完全不依赖媒体查询。普通浏览器没有这个属性，表现保持原样。
+   ════════════════════════════════════════════════════════════════════ */
+
+html[data-float-shell="1"] {
+  --phone-screen-width: 100vw;
+  --phone-screen-height: 100lvh;
+  --phone-screen-radius: 0px;
+  --phone-frame-size: 0px;
+  --phone-frame-radius: 0px;
+  --phone-case-padding: 0px;
+  --phone-case-border-size: 0px;
+  --phone-case-radius: 0px;
+  --status-bar-drop: 0px;
+}
+
+html[data-float-shell="1"] body {
+  overflow: hidden;
+  width: 100vw;
+  height: 100lvh;
+  background: var(--c-page-body-bg);
+}
+
+html[data-float-shell="1"] .app-root,
+html[data-float-shell="1"] .app-root.splash-root {
+  width: 100vw;
+  height: 100lvh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+html[data-float-shell="1"] .phone-shell-wrap,
+html[data-float-shell="1"] .splash-shell-wrap {
+  width: 100vw;
+  margin: 0;
+  gap: 0;
+  transform: none;
+}
+
+/* 外层金属中框：透明化，连侧键伪元素一起关掉 */
+html[data-float-shell="1"] .phone-shell-wrap .phone-case,
+html[data-float-shell="1"] .splash-shell-wrap .phone-case {
+  width: 100vw;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-float-shell="1"] .phone-shell-wrap .phone-case::before,
+html[data-float-shell="1"] .phone-shell-wrap .phone-case::after,
+html[data-float-shell="1"] .splash-shell-wrap .phone-case::before,
+html[data-float-shell="1"] .splash-shell-wrap .phone-case::after {
+  display: none;
+}
+
+/* 内层黑色边框 */
+html[data-float-shell="1"] .phone-shell-wrap .phone-frame,
+html[data-float-shell="1"] .splash-shell-wrap .phone-frame {
+  width: 100vw;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-float-shell="1"] .phone-shell-wrap .phone-frame::before,
+html[data-float-shell="1"] .phone-shell-wrap .phone-frame::after,
+html[data-float-shell="1"] .splash-shell-wrap .phone-frame::before,
+html[data-float-shell="1"] .splash-shell-wrap .phone-frame::after {
+  display: none;
+}
+
+/* 屏幕本体：铺满，圆角归零（真机圆角由设备决定，网页再画一层只会多出一圈） */
+html[data-float-shell="1"] .phone-shell {
+  width: 100vw;
+  height: 100lvh;
+  border-radius: 0;
+}

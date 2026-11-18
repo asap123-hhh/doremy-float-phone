@@ -59,6 +59,29 @@ class MainActivity : AppCompatActivity() {
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
         const val VERSION = "1.0.10"
+
+        /**
+         * 壳内强制「整屏铺满、去掉虚拟机身」的样式。
+         *
+         * 网页那套整屏规则只写在 @media (max-width:500px) and (hover:none) and (pointer:coarse)
+         * 里，而 WebView 对 hover / pointer 的求值随版本和机型变化，这条查询并不稳定命中；
+         * 一旦不命中就走桌面分支，390px 的虚拟手机壳连同金属边框、侧键一起被按真机像素
+         * 放大，表现为机身溢出屏幕右侧。
+         *
+         * App 里页面本来就该占满整块屏幕，所以这里在每次加载后注入一份等价样式，
+         * 不依赖媒体查询，也不要求站点已经重新部署。
+         */
+        const val SHELL_FULLSCREEN_JS = """(function(){var d=document;var r=d.documentElement;r.setAttribute('data-float-shell','1');if(d.getElementById('float-shell-native'))return;var s=d.createElement('style');s.id='float-shell-native';s.textContent=[
+'html[data-float-shell="1"]{--phone-screen-width:100vw;--phone-screen-height:100lvh;--phone-screen-radius:0px;--phone-frame-size:0px;--phone-case-padding:0px;--phone-case-border-size:0px;--phone-frame-radius:0px;--phone-case-radius:0px;--status-bar-drop:0px}',
+'html[data-float-shell="1"] body{overflow:hidden;width:100vw;height:100lvh;background:var(--c-page-body-bg)}',
+'html[data-float-shell="1"] .app-root,html[data-float-shell="1"] .app-root.splash-root{width:100vw;height:100lvh;margin:0;padding:0;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden}',
+'html[data-float-shell="1"] .phone-shell-wrap,html[data-float-shell="1"] .splash-shell-wrap{width:100vw;margin:0;gap:0;transform:none}',
+'html[data-float-shell="1"] .phone-shell-wrap .phone-case{width:100vw;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}',
+'html[data-float-shell="1"] .phone-shell-wrap .phone-case::before,html[data-float-shell="1"] .phone-shell-wrap .phone-case::after{display:none}',
+'html[data-float-shell="1"] .phone-shell-wrap .phone-frame{width:100vw;padding:0;border-radius:0;background:transparent;box-shadow:none}',
+'html[data-float-shell="1"] .phone-shell-wrap .phone-frame::before,html[data-float-shell="1"] .phone-shell-wrap .phone-frame::after{display:none}',
+'html[data-float-shell="1"] .phone-shell{width:100vw;height:100lvh;border-radius:0}'
+].join('');d.head.appendChild(s);})();"""
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -288,6 +311,15 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
             userAgentString = "$userAgentString FloatShell/$VERSION"
+            // 尊重网页的 viewport meta：否则 WebView 把页面当 980px 桌面页整体缩小，
+            // CSS 里 @media (max-width:500px) 的整屏分支永远不命中，
+            // 最终画出 390px 的「虚拟手机壳」，在真机上就是手机套手机。
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            // App 不是可缩放的网页，关掉双指缩放与缩放按钮。
+            builtInZoomControls = false
+            displayZoomControls = false
+            setSupportZoom(false)
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
@@ -303,31 +335,12 @@ class MainActivity : AppCompatActivity() {
         // WebView 只能在主线程访问，投递时由 ShellBus 统一 post 到主线程。
         ShellBus.webView = webView
 
-        val proxyClient = OkHttpClient.Builder().followRedirects(true).build()
-        val BACKEND_TARGET = "https://float.wenyuchu0216.cc.cd"
-
+        // 这里曾有一段把发往 SITE_URL 的请求全部改写到第三方镜像
+        // （float.wenyuchu0216.cc.cd）的 shouldInterceptRequest 代理，整段移除：
+        //   1. 壳加载的不是本仓库部署的站点，改代码 / 重新部署在 App 里永远看不到；
+        //   2. 所有 /api 请求（聊天、角色卡、密钥）都会经过那台第三方服务器。
+        // 壳必须直连编译时写入的 SITE_URL。
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                val url = request.url.toString()
-                if (url.startsWith(SITE_URL) || url.startsWith("https://doremy-float-phone.vercel.app")) {
-                    val targetUrl = url.replace(SITE_URL, BACKEND_TARGET).replace("https://doremy-float-phone.vercel.app", BACKEND_TARGET)
-                    return runCatching {
-                        val builder = Request.Builder().url(targetUrl)
-                        for ((k, v) in request.requestHeaders) {
-                            if (!k.equals("Host", ignoreCase = true)) {
-                                builder.header(k, v)
-                            }
-                        }
-                        val resp = proxyClient.newCall(builder.build()).execute()
-                        val mimeType = resp.header("Content-Type")?.split(";")?.get(0)?.trim() ?: "text/html"
-                        val encoding = if (mimeType.contains("text") || mimeType.contains("javascript") || mimeType.contains("json")) "utf-8" else null
-                        val bodyBytes = resp.body?.bytes() ?: ByteArray(0)
-                        WebResourceResponse(mimeType, encoding, resp.code, resp.message.ifEmpty { "OK" }, resp.headers.toMap(), ByteArrayInputStream(bodyBytes))
-                    }.getOrNull()
-                }
-                return super.shouldInterceptRequest(view, request)
-            }
-
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 val scheme = url.scheme ?: return false
@@ -338,6 +351,13 @@ class MainActivity : AppCompatActivity() {
                 return runCatching {
                     startActivity(Intent(Intent.ACTION_VIEW, url)); true
                 }.getOrDefault(true)
+            }
+
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                // 每次页面加载完成后注入整屏样式；SPA 内部跳转不会丢（属性挂在 html 上），
+                // 重复注入按 id 判重直接返回。
+                view.evaluateJavascript(SHELL_FULLSCREEN_JS, null)
             }
         }
 
