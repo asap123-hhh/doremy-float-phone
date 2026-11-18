@@ -1,0 +1,29 @@
+name: Apply alarm status patch (one-shot)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-alarm-status-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run patch
+        run: python3 .github/scripts/patch_alarm_status.py
+      - name: Commit and clean up
+        run: |
+          set -e
+          git config user.name "asap123-hhh"
+          git config user.email "2058761504@qq.com"
+          git add -A
+          git commit -m "fix: 启动时自报精确闹钟状态，并修复头次进入的编译错误（1.0.22）"
+          git rm -q .github/scripts/patch_alarm_status.py
+          git rm -q .github/workflows/apply-alarm-status-patch.yml
+          git commit -m "ci: 清理一次性补丁文件"
+          git push
