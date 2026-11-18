@@ -34,6 +34,12 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(/FloatShell\\//.test(navigator.userAgent)){document.documentElement.setAttribute("data-float-shell","1")}}catch(e){}',
+          }}
+        />
         <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
         <meta name="theme-color" content="#f8f7f2" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
